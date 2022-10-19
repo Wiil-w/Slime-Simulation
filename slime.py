@@ -7,10 +7,13 @@ class Simulation:
     # delay between frames in ms
     DELAY: int = 15
     RENDER_SPEED: int = 1
-    MAP_SIZE: int = 100
+    SPEED: int = 20
+    MAP_SIZE: int = 500
     AGENTS_NUM: int = 5
     CIRCLE_SIZE: float = 0.4
-    SIZE: int = 10
+    SIZE: int = 5
+    TRAIL_STRENGTH: int = 1
+    TRAIL_DELAY: int = 2
 
     def __init__(self) -> None:
         self.tick = 0
@@ -21,7 +24,7 @@ class Simulation:
         """runs the simulation"""
         while True:
             self.tick += 1
-            self.update_agents()
+            self.update_simulation()
             self.draw_map()
 
             if not (self.tick % self.RENDER_SPEED):
@@ -31,56 +34,67 @@ class Simulation:
             if k == 113:
                 break
 
+    def update_simulation(self) -> None:
+        self.update_agents()
+        self.lay_trails()
+
     def create_agents(self) -> None:
         """create_agents creates a collection of agents in a circle"""
 
         radius = int(self.CIRCLE_SIZE * self.MAP_SIZE)
-
-        # Circle
-        # theta = np.linspace(0, 2 * np.pi, self.AGENTS_NUM)
-        # a = radius * np.cos(theta)
-        # b = radius * np.sin(theta)
 
         t = np.random.uniform(0, 1, size=self.AGENTS_NUM)
         u = np.random.uniform(0, 1, size=self.AGENTS_NUM)
 
         x = radius * np.sqrt(t) * np.cos(2 * np.pi * u) + self.MAP_SIZE / 2
         y = radius * np.sqrt(t) * np.sin(2 * np.pi * u) + self.MAP_SIZE / 2
+        r = np.random.rand(self.AGENTS_NUM) * 2 * np.pi
 
         self.agents = (
             np.column_stack(
                 [
                     x,
                     y,
-                    (np.random.rand(self.AGENTS_NUM) - 0.5) * 10,  # vx
-                    (np.random.rand(self.AGENTS_NUM) - 0.5) * 10,  # vy
+                    r,
                 ]
             )
-            + np.random.rand(self.AGENTS_NUM, 4) * 0.1
         )
 
     def update_agents(self) -> None:
-        self.agents[:, :2] += self.agents[:, 2:]
+        # update agents position
+        self.agents[:, 0] += self.SPEED * np.sin(self.agents[:, 2])
+        self.agents[:, 1] += self.SPEED * np.cos(self.agents[:, 2])
 
         in_bounds = (0 <= self.agents[:, :2]) & (
             self.agents[:, :2] < self.MAP_SIZE)
 
+        # keep agents in bounds
         self.agents[:, :2][~in_bounds] = np.clip(
             self.agents[:, :2][~in_bounds], 0, self.MAP_SIZE - 1)
 
-        self.agents[:, 2:][~in_bounds] *= -1
+        # update agents directions (radians)
+        # bouncing off horizontal walls means inverting the radians
+        # bouncing off vertical walls means subtracting the radians from pi (invert and add pi)
+        self.agents[:, 2][~in_bounds.all(axis=1)] *= -1
+        self.agents[:, 2][~in_bounds[:, 1]] += np.pi
+
+    def lay_trails(self) -> None:
+        if not (self.tick % self.TRAIL_DELAY):
+            h, w = self.agents[:, :2].astype(int).T
+            self.trails_map[
+                h, w
+            ] = 125
 
     def draw_map(self) -> None:
         self.frame = np.zeros((self.MAP_SIZE, self.MAP_SIZE))
 
         # Draw agents
-        h, w = self.agents[:, :2].astype(int).T
-        self.frame[h, w] = 255
+        for agent in self.agents:
+            h, w = np.rint(agent[:2]).astype(int)
+            cv.circle(self.frame, (w, h), self.SIZE, 255, -1)
 
-        # Scale the map
-        h, w = self.frame.shape
-        self.frame = cv.resize(
-            self.frame, (w*self.SIZE, h*self.SIZE), interpolation=cv.INTER_NEAREST)
+        # Draw trails
+        self.frame += self.trails_map
 
 
 if "__main__" == __name__:
