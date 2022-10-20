@@ -5,15 +5,22 @@ import cv2 as cv
 class Simulation:
 
     # delay between frames in ms
-    DELAY: int = 15
+    DELAY: int = 1
     RENDER_SPEED: int = 1
-    SPEED: int = 20
+    SPEED: int = 8
     MAP_SIZE: int = 500
-    AGENTS_NUM: int = 5
+    AGENTS_NUM: int = 50
     CIRCLE_SIZE: float = 0.4
-    SIZE: int = 5
-    TRAIL_STRENGTH: int = 1
-    TRAIL_DELAY: int = 2
+    SIZE: int = 3
+    TRAIL_STRENGTH: float = 50
+
+    # How heavy the blur is on the map
+    # Which is used to spread out trails
+    BLUR_STRENTH: int = 15
+
+    # How fast trails fade to 0
+    # Trails are multipled by this value every step
+    DISSIPATE_TARGET: int = AGENTS_NUM*700
 
     def __init__(self) -> None:
         self.tick = 0
@@ -37,6 +44,7 @@ class Simulation:
     def update_simulation(self) -> None:
         self.update_agents()
         self.lay_trails()
+        self.dissipate_trails()
 
     def create_agents(self) -> None:
         """create_agents creates a collection of agents in a circle"""
@@ -79,19 +87,24 @@ class Simulation:
         self.agents[:, 2][~in_bounds[:, 1]] += np.pi
 
     def lay_trails(self) -> None:
-        if not (self.tick % self.TRAIL_DELAY):
-            h, w = self.agents[:, :2].astype(int).T
-            self.trails_map[
-                h, w
-            ] = 125
+        h, w = self.agents[:, :2].astype(int).T
+        self.trails_map[
+            h, w
+        ] += self.TRAIL_STRENGTH
+
+    def dissipate_trails(self):
+        self.trails_map = cv.GaussianBlur(
+            self.trails_map, (self.BLUR_STRENTH, self.BLUR_STRENTH), 0
+        )
+
+        self.trails_map = np.clip(self.trails_map, 0, 20)
+
+        while self.trails_map.sum() > self.DISSIPATE_TARGET:
+            self.trails_map *= 0.95
+
 
     def draw_map(self) -> None:
         self.frame = np.zeros((self.MAP_SIZE, self.MAP_SIZE))
-
-        # Draw agents
-        for agent in self.agents:
-            h, w = np.rint(agent[:2]).astype(int)
-            cv.circle(self.frame, (w, h), self.SIZE, 255, -1)
 
         # Draw trails
         self.frame += self.trails_map
