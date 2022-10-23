@@ -7,22 +7,21 @@ class Simulation:
     # delay between frames in ms
     DELAY: int = 1
     RENDER_SPEED: int = 1
-    SPEED: int = 5
+    SPEED: int = 2
     MAP_SIZE: int = 500
-    AGENTS_NUM: int = 50
+    AGENTS_NUM: int = 500
     CIRCLE_SIZE: float = 0.4
-    SIZE: int = 3
-    TRAIL_STRENGTH: float = 25
-    AGENT_FOV: float = np.pi / 6
-    VISION_DISTANCE: int = 2 * SPEED
+    TRAIL_STRENGTH: float = 15
+    AGENT_FOV: float = np.pi / 12
+    VISION_DISTANCE: int = SPEED * 2
 
     # How heavy the blur is on the map
     # Which is used to spread out trails
-    BLUR_STRENTH: int = 11
+    BLUR_STRENTH: int = 3
 
     # How fast trails fade to 0
     # Trails are multipled by this value every step
-    DISSIPATE_TARGET: int = AGENTS_NUM * 400
+    DISSIPATE_TARGET: int = AGENTS_NUM * 100
 
     def __init__(self) -> None:
         self.tick = 0
@@ -44,8 +43,8 @@ class Simulation:
                 break
 
     def update_simulation(self) -> None:
-        self.update_agents()
         self.lay_trails()
+        self.update_agents()
         self.dissipate_trails()
 
     def create_agents(self) -> None:
@@ -71,25 +70,7 @@ class Simulation:
     def update_agents(self) -> None:
 
         # rotate agent direction (vector)
-        np.apply_along_axis(self.rotate, 0, self.agents[:, 2])
-
-        # rad_straight = self.agents[:, 2]
-        # straight = self.get_vision(
-        #     np.sin(self.agents[:, 2]),
-        #     np.cos(self.agents[:, 2]),
-        # )
-
-        # rad_right = rad_straight - self.AGENT_FOV
-        # right = self.get_vision(
-        #     np.sin(rad_right),
-        #     np.cos(rad_right),
-        # )
-
-        # rad_left = rad_straight + self.AGENT_FOV
-        # left = self.get_vision(
-        #     np.sin(rad_left),
-        #     np.cos(rad_left),
-        # )
+        self.rotate()
 
         # update agents position
         self.agents[:, 0] += self.SPEED * np.sin(self.agents[:, 2])
@@ -109,39 +90,56 @@ class Simulation:
         self.agents[:, 2][~in_bounds.all(axis=1)] *= -1
         self.agents[:, 2][~in_bounds[:, 1]] += np.pi
 
-    def rotate(
-        self,
-        rad: np.float64,
-    ) -> np.float64:
+    # def rotate(self) -> None:
+    #     h, w = self.agents[:, :2].astype(int).T
+    #     trail_sum = np.zeros((self.AGENTS_NUM))
+    #     result = self.agents[:, 2]
+    #     for i in range(-1, 2):
+    #         rad_i = self.agents[:, 2] + self.AGENT_FOV * i
+    #         h_v = np.clip(h + self.VISION_DISTANCE * np.sin(rad_i), 0, self.MAP_SIZE - 1).astype(int)
+    #         w_v = np.clip(w + self.VISION_DISTANCE * np.cos(rad_i), 0, self.MAP_SIZE - 1).astype(int)
+    #         val = self.trails_map[h_v, w_v]
 
-        # straight
-        h = self.VISION_DISTANCE * np.sin(rad)
-        w = self.VISION_DISTANCE * np.cos(rad)
-        trail_sum = self.trails_map[h - 3: h + 3, w - 3: w + 3].sum()
-        result = rad
+    #         cond = val > trail_sum
+    #         trail_sum = np.where(cond, trail_sum, val)
+    #         result = np.where(cond, result, rad_i)
 
-        # left
-        rad_left = rad + self.AGENT_FOV
-        h = self.VISION_DISTANCE * np.sin(rad_left)
-        w = self.VISION_DISTANCE * np.cos(rad_left)
-        val = self.trails_map[h - 3: h + 3, w - 3: w + 3].sum()
-        if val > trail_sum:
-            trail_sum = val
-            result = rad_left
+    #     self.agents[:, 2] = result
 
-        # right
-        rad_right = rad - self.AGENT_FOV
-        h = self.VISION_DISTANCE * np.sin(rad_right)
-        w = self.VISION_DISTANCE * np.cos(rad_right)
-        trail_sum = self.trails_map[h - 3: h + 3, w - 3: w + 3].sum()
-        if val > trail_sum:
-            trail_sum = val
-            result = rad_right
+    def rotate(self) -> None:
 
-        return result
+        trail_sum = self.calc_rotation(self.agents[:, 2])
+        result = self.agents[:, 2]
+
+        rad_left = self.agents[:, 2] + self.AGENT_FOV
+        val = self.calc_rotation(rad_left)
+        cond = val > trail_sum
+        trail_sum = np.where(cond, val, trail_sum)
+        result = np.where(cond, rad_left, result)
+
+        rad_right = self.agents[:, 2] - self.AGENT_FOV
+        val = self.calc_rotation(rad_right)
+        cond = val > trail_sum
+        trail_sum = np.where(cond, val, trail_sum)
+        result = np.where(cond, rad_right, result)
+
+        self.agents[:, 2] = result
+        
+        cond = np.random.rand(self.AGENTS_NUM) < .1
+        self.agents[cond, 2] += np.where(np.random.randint(
+            2, size=cond.sum()), self.AGENT_FOV, -self.AGENT_FOV)
+
+    def calc_rotation(self, rad: np.ndarray[any, np.floating]) -> np.ndarray[any, np.int32]:
+        h, w = self.agents[:, :2].astype(int).T
+        h_v = np.clip(h + self.VISION_DISTANCE * np.sin(rad),
+                      0, self.MAP_SIZE - 1).astype(int)
+        w_v = np.clip(w + self.VISION_DISTANCE * np.cos(rad),
+                      0, self.MAP_SIZE - 1).astype(int)
+        return self.trails_map[h_v, w_v]
 
     def lay_trails(self) -> None:
         h, w = self.agents[:, :2].astype(int).T
+        self.trails_map[self.trails_map > 3] -= 3
         self.trails_map[h, w] += self.TRAIL_STRENGTH
 
     def dissipate_trails(self):
@@ -149,7 +147,7 @@ class Simulation:
             self.trails_map, (self.BLUR_STRENTH, self.BLUR_STRENTH), 0
         )
 
-        self.trails_map = np.clip(self.trails_map, 0, 20)
+        self.trails_map = np.clip(self.trails_map, 0, self.TRAIL_STRENGTH)
 
         while self.trails_map.sum() > self.DISSIPATE_TARGET:
             self.trails_map *= 0.95
