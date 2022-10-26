@@ -7,9 +7,9 @@ class Simulation:
     # delay between frames in ms
     DELAY: int = 1
     RENDER_SPEED: int = 1
-    SPEED: int = 2
+    SPEED: int = 1
     MAP_SIZE: int = 500
-    AGENTS_NUM: int = 500
+    AGENTS_NUM: int = 100
     CIRCLE_SIZE: float = 0.4
     TRAIL_STRENGTH: float = 15
     AGENT_FOV: float = np.pi / 12
@@ -17,11 +17,9 @@ class Simulation:
 
     # How heavy the blur is on the map
     # Which is used to spread out trails
-    BLUR_STRENTH: int = 3
-
-    # How fast trails fade to 0
-    # Trails are multipled by this value every step
-    DISSIPATE_TARGET: int = AGENTS_NUM * 100
+    BLUR_STRENTH: int = 5
+    BLUR_DELAY: int = 3
+    DISSIPATION_RATE: float = 10
 
     def __init__(self) -> None:
         self.tick = 0
@@ -90,22 +88,6 @@ class Simulation:
         self.agents[:, 2][~in_bounds.all(axis=1)] *= -1
         self.agents[:, 2][~in_bounds[:, 1]] += np.pi
 
-    # def rotate(self) -> None:
-    #     h, w = self.agents[:, :2].astype(int).T
-    #     trail_sum = np.zeros((self.AGENTS_NUM))
-    #     result = self.agents[:, 2]
-    #     for i in range(-1, 2):
-    #         rad_i = self.agents[:, 2] + self.AGENT_FOV * i
-    #         h_v = np.clip(h + self.VISION_DISTANCE * np.sin(rad_i), 0, self.MAP_SIZE - 1).astype(int)
-    #         w_v = np.clip(w + self.VISION_DISTANCE * np.cos(rad_i), 0, self.MAP_SIZE - 1).astype(int)
-    #         val = self.trails_map[h_v, w_v]
-
-    #         cond = val > trail_sum
-    #         trail_sum = np.where(cond, trail_sum, val)
-    #         result = np.where(cond, result, rad_i)
-
-    #     self.agents[:, 2] = result
-
     def rotate(self) -> None:
 
         trail_sum = self.calc_rotation(self.agents[:, 2])
@@ -124,7 +106,7 @@ class Simulation:
         result = np.where(cond, rad_right, result)
 
         self.agents[:, 2] = result
-        
+
         cond = np.random.rand(self.AGENTS_NUM) < .1
         self.agents[cond, 2] += np.where(np.random.randint(
             2, size=cond.sum()), self.AGENT_FOV, -self.AGENT_FOV)
@@ -135,28 +117,59 @@ class Simulation:
                       0, self.MAP_SIZE - 1).astype(int)
         w_v = np.clip(w + self.VISION_DISTANCE * np.cos(rad),
                       0, self.MAP_SIZE - 1).astype(int)
-        return self.trails_map[h_v, w_v]
+
+        return np.vectorize(self.sum_trails)(h_v, w_v)
+        # return self.trails_map[h_v, w_v]
+
+    def sum_trails(self, h, w):
+        return np.sum(self.trails_map[h-1:h+1, w-1:w+1])
 
     def lay_trails(self) -> None:
         h, w = self.agents[:, :2].astype(int).T
-        self.trails_map[self.trails_map > 3] -= 3
-        self.trails_map[h, w] += self.TRAIL_STRENGTH
+        self.trails_map[h, w] = 255
 
     def dissipate_trails(self):
-        self.trails_map = cv.GaussianBlur(
-            self.trails_map, (self.BLUR_STRENTH, self.BLUR_STRENTH), 0
-        )
+        self.new_trails = np.zeros((self.MAP_SIZE, self.MAP_SIZE))
 
-        self.trails_map = np.clip(self.trails_map, 0, self.TRAIL_STRENGTH)
+        for h in range(self.MAP_SIZE):
+            for w in range(self.MAP_SIZE):
+                blur_value = self.trails_map[
+                    max(h-1, 0):min(h+1, self.MAP_SIZE-1),
+                    max(w-1, 0):min(w+1, self.MAP_SIZE-1)].sum() 
 
-        while self.trails_map.sum() > self.DISSIPATE_TARGET:
-            self.trails_map *= 0.95
+                # lerp between current value and blurred value
+                self.new_trails[h, w] = self.trails_map[h, w] * \
+                    (1 - self.DISSIPATION) + blur_value * self.DISSIPATION
+
+                self.new_trails[h, w]=max(0, blur_value - self.DISSIPATION_RATE)
+
+        self.trails_map = self.new_trails
+        # self.trails_map = np.vectorize(self.blur_trails)(self.trails_map) * .97
+
+        # for h in range(self.MAP_SIZE):
+        #     for w in range(self.MAP_SIZE):
+        #         self.trails_map[h, w] = max(0, self.trails_map[h, w] - self.DISSIPATION)
+
+        # if self.tick % self.BLUR_DELAY:
+        #     self.trails_map = cv.boxFilter(
+        #         self.trails_map,-1, (self.BLUR_STRENTH, self.BLUR_STRENTH)
+        #     )
+
+        # self.trails_map *= .97
+
+    def blur_trails(self, h, w):
+        trail_sum = 0
+        for i in range(-1, 2):
+            x = w + i
+            for j in range(-1, 2):
+                y = h + j
+                if 0 <= x < self.MAP_SIZE and 0 <= y < self.MAP_SIZE:
+                    trail_sum += self.trails_map[y, x]
+
+        return trail_sum/9
 
     def draw_map(self) -> None:
-        self.frame = np.zeros((self.MAP_SIZE, self.MAP_SIZE))
-
-        # Draw trails
-        self.frame += self.trails_map
+        self.frame = np.zeros((self.MAP_SIZE, self.MAP_SIZE)) + self.trails_map
 
 
 if "__main__" == __name__:
