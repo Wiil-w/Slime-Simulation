@@ -22,7 +22,7 @@ class Simulation:
 
     def __init__(self) -> None:
         self.tick = 0
-        self.trails_map = np.zeros((self.map_size, self.map_size), dtype=np.uint8)
+        self.trails_map = np.zeros((self.map_size, self.map_size))
         self.create_agents()
 
     def update(self) -> None:
@@ -128,22 +128,22 @@ class Simulation:
 
     def dissipate_trails(self):
 
-        # # blur the trails map
-        # blur_map = cv.blur(
-        #     self.trails_map, (self.blur_strenth, self.blur_strenth)
-        # )
+        # blur the trails map
+        blur_map = cv.blur(
+            self.trails_map, (self.blur_strenth, self.blur_strenth)
+        )
 
-        # # linear interpolation between the blurred map and the original map
-        # self.trails_map = self.dissipation_rate * self.trails_map + (
-        #     1 - self.dissipation_rate
-        # ) * blur_map
+        # linear interpolation between the blurred map and the original map
+        self.trails_map = self.dissipation_rate * self.trails_map + (
+            1 - self.dissipation_rate
+        ) * blur_map
         
         # decay the trails
         self.trails_map[self.trails_map != 0] -= 1
         # self.trails_map *= self.dissipation_rate
 
     def draw_map(self) -> None:
-        self.frame = np.zeros((self.map_size, self.map_size), dtype=np.uint8) + self.trails_map
+        self.frame = np.zeros((self.map_size, self.map_size), dtype=np.uint8) + self.trails_map.astype(np.uint8)
 
 
 if "__main__" == __name__:
