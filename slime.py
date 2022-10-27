@@ -5,24 +5,25 @@ import cv2 as cv
 
 class Simulation:
 
-    delay: int = 5
+    delay: int = 1
     render_speed: int = 1
     speed: int = 1
-    zoom: int = 4
+    zoom: int = 1
 
-    map_height: int = 180
-    map_width: int = 320
-    circle_size: float = 0.4
+    screen_size: int = 3
+    map_width: int = 320 * 2**(screen_size-1)
+    map_height: int = 180 * 2**(screen_size-1)
+    circle_size: float = 0.6
 
-    agents_num: int = 250
-    agent_fov: float = np.pi / 6
+    agents_num: int = 6000
+    agent_fov: float = np.pi / 8
     agent_turn: float = agent_fov / 2
     vision_distance: int = speed * 3
 
-    trail_strength: float = 1
+    trail_strength: float = .8
     blur_size: int = 3
     dissipation_rate: float = .15
-    decay_rate: float = 1
+    decay_rate: float = .5
 
     def __init__(self) -> None:
         self.tick = 0
@@ -38,10 +39,13 @@ class Simulation:
             self.update_simulation()
 
             if not (self.tick % self.render_speed):
-                trails = (self.trails_map / self.trail_strength).astype(np.uint8)
+                trails = (self.trails_map /
+                          self.trail_strength).astype(np.uint8)
                 if self.zoom > 1:
-                    trails = cv.resize(trails, (self.map_width * self.zoom,
-                                       self.map_height * self.zoom), interpolation=cv.INTER_NEAREST)
+                    trails = cv.resize(trails,
+                                       (self.map_width * self.zoom,
+                                        self.map_height * self.zoom),
+                                       interpolation=cv.INTER_NEAREST)
                 cv.imshow("Simulation", trails)
 
             k = cv.waitKey(self.delay)
@@ -56,18 +60,23 @@ class Simulation:
     def create_agents(self) -> None:
         """create_agents creates a collection of agents in a circle"""
 
-        radius = int(self.circle_size * min(self.map_height, self.map_width) / 2)
+        radius = int(self.circle_size *
+                     min(self.map_height, self.map_width) / 2)
 
-        t = np.random.uniform(0, 1, size=self.agents_num)
+        t = radius * np.sqrt(np.random.uniform(0, 1, size=self.agents_num))
         u = np.random.uniform(0, 1, size=self.agents_num) * 2 * np.pi
 
         self.agents_rad = -u
         self.agents_pos = np.column_stack(
             [
-                radius * np.sqrt(t) * np.cos(u) + self.map_height / 2,
-                radius * np.sqrt(t) * np.sin(u) + self.map_width / 2,
+                t * np.cos(u) + self.map_height / 2,
+                t * np.sin(u) + self.map_width / 2,
             ]
         )
+
+        # single point in middle (WIP)
+        # self.agents_rad = np.linspace(0, 1, num=self.agents_num) * 2 * np.pi
+        # self.agents_pos = np.full((self.agents_num, 2), (self.map_height / 2, self.map_width / 2))
 
     def update_agents(self) -> None:
 
@@ -88,7 +97,8 @@ class Simulation:
         # bouncing off horizontal walls means inverting the radians
         # bouncing off vertical walls means subtracting the radians from pi (invert and add pi)
         self.agents_rad[out_of_bounds] *= -1
-        self.agents_rad[out_of_bounds] += (np.random.rand(out_of_bounds.sum()) - .5) * 2 * self.agent_turn
+        self.agents_rad[out_of_bounds] += 2 * self.agent_turn * \
+            (np.random.rand(out_of_bounds.sum()) - .5)
         self.agents_rad[x_out_of_bounds] += np.pi
 
     def rotate(self) -> None:
@@ -147,7 +157,7 @@ class Simulation:
             (1 - self.dissipation_rate) * self.trails_map
 
         # decay the trails
-        self.trails_map[self.trails_map >= 1] -= self.decay_rate
+        self.trails_map[self.trails_map >= self.decay_rate] -= self.decay_rate
 
 
 if "__main__" == __name__:
