@@ -19,10 +19,10 @@ class Simulation:
     agent_turn: float = agent_fov / 2
     vision_distance: int = speed * 3
 
-    trail_strength: float = 2
-    blur_strenth: int = 3
+    trail_strength: float = 1
+    blur_size: int = 3
     dissipation_rate: float = .15
-    decay_rate: int = 1
+    decay_rate: float = 1
 
     def __init__(self) -> None:
         self.tick = 0
@@ -38,7 +38,7 @@ class Simulation:
             self.update_simulation()
 
             if not (self.tick % self.render_speed):
-                trails = self.trails_map.astype(np.uint8)
+                trails = (self.trails_map / self.trail_strength).astype(np.uint8)
                 if self.zoom > 1:
                     trails = cv.resize(trails, (self.map_width * self.zoom,
                                        self.map_height * self.zoom), interpolation=cv.INTER_NEAREST)
@@ -139,7 +139,7 @@ class Simulation:
     def dissipate_trails(self) -> None:
         # blur the trails map
         blur_map = cv.blur(
-            self.trails_map, (self.blur_strenth, self.blur_strenth)
+            self.trails_map, (self.blur_size, self.blur_size)
         )
 
         # linear interpolation between the blurred map and the original map
