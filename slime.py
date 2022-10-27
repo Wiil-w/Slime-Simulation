@@ -51,17 +51,13 @@ class Simulation:
         radius = int(self.circle_size * self.map_size)
 
         t = np.random.uniform(0, 1, size=self.agents_num)
-        u = np.random.uniform(0, 1, size=self.agents_num)
+        u = np.random.uniform(0, 1, size=self.agents_num) * 2 * np.pi
 
-        x = radius * np.sqrt(t) * np.cos(2 * np.pi * u) + self.map_size / 2
-        y = radius * np.sqrt(t) * np.sin(2 * np.pi * u) + self.map_size / 2
-        r = np.random.rand(self.agents_num) * 2 * np.pi
-
-        self.agents = np.column_stack(
+        self.agents_rad = np.random.rand(self.agents_num) * 2 * np.pi
+        self.agents_pos = np.column_stack(
             [
-                x,
-                y,
-                r,
+                radius * np.sqrt(t) * np.cos(u) + self.map_size / 2,
+                radius * np.sqrt(t) * np.sin(u) + self.map_size / 2,
             ]
         )
 
@@ -71,51 +67,50 @@ class Simulation:
         self.rotate()
 
         # update agents position
-        self.agents[:, 0] += self.speed * np.sin(self.agents[:, 2])
-        self.agents[:, 1] += self.speed * np.cos(self.agents[:, 2])
+        self.agents_pos[:, 0] += self.speed * np.sin(self.agents_rad)
+        self.agents_pos[:, 1] += self.speed * np.cos(self.agents_rad)
 
-        in_bounds = (0 <= self.agents[:, :2]) & (
-            self.agents[:, :2] < self.map_size)
+        in_bounds = (0 <= self.agents_pos) & (
+            self.agents_pos < self.map_size)
 
         # keep agents in bounds
-        self.agents[:, :2][~in_bounds] = np.clip(
-            self.agents[:, :2][~in_bounds], 0, self.map_size - 1
+        self.agents_pos[~in_bounds] = np.clip(
+            self.agents_pos[~in_bounds], 0, self.map_size - 1
         )
 
         # update agents directions (radians)
         # bouncing off horizontal walls means inverting the radians
         # bouncing off vertical walls means subtracting the radians from pi (invert and add pi)
-        self.agents[:, 2][~in_bounds.all(axis=1)] *= -1
-        self.agents[:, 2][~in_bounds[:, 1]] += np.pi
+        self.agents_rad[~in_bounds.all(axis=1)] *= -1
+        self.agents_rad[~in_bounds[:, 1]] += np.pi
 
     def rotate(self) -> None:
 
-        trail_sum = self.calc_rotation(self.agents[:, 2])
-        result = self.agents[:, 2]
+        trail_sum = self.calc_rotation(self.agents_rad)
+        result = self.agents_rad
 
-        rad_left = self.agents[:, 2] + self.agent_fov
+        rad_left = self.agents_rad + self.agent_fov
         val = self.calc_rotation(rad_left)
         cond = val > trail_sum
         trail_sum = np.where(cond, val, trail_sum)
         result = np.where(cond, rad_left, result)
 
-        rad_right = self.agents[:, 2] - self.agent_fov
+        rad_right = self.agents_rad - self.agent_fov
         val = self.calc_rotation(rad_right)
         cond = val > trail_sum
         trail_sum = np.where(cond, val, trail_sum)
         result = np.where(cond, rad_right, result)
 
-        self.agents[:, 2] = result
+        self.agents_rad = result
 
         cond = np.random.rand(self.agents_num) < .1
-        self.agents[cond, 2] += np.where(np.random.randint(
+        self.agents_rad[cond] += np.where(np.random.randint(
             2, size=cond.sum()), self.agent_fov, -self.agent_fov)
 
     def calc_rotation(self, rad: np.ndarray[any, np.floating]) -> np.ndarray[any, np.int32]:
-        h, w = self.agents[:, :2].astype(int).T
-        h_v = np.clip(h + self.vision_distance * np.sin(rad),
+        h_v = np.clip(self.agents_pos[:, 0] + self.vision_distance * np.sin(rad),
                       0, self.map_size - 1).astype(int)
-        w_v = np.clip(w + self.vision_distance * np.cos(rad),
+        w_v = np.clip(self.agents_pos[:, 1] + self.vision_distance * np.cos(rad),
                       0, self.map_size - 1).astype(int)
 
         return np.vectorize(self.sum_trails)(h_v, w_v)
@@ -125,7 +120,7 @@ class Simulation:
         return np.sum(self.trails_map[h-1:h+1, w-1:w+1])
 
     def lay_trails(self) -> None:
-        h, w = self.agents[:, :2].astype(int).T
+        h, w = self.agents_pos.astype(int).T
         self.trails_map[h, w] = 255
 
     def dissipate_trails(self):
@@ -137,9 +132,9 @@ class Simulation:
                     max(h-1, 0):min(h+1, self.map_size-1),
                     max(w-1, 0):min(w+1, self.map_size-1)].sum() 
 
-                # lerp between current value and blurred value
-                self.new_trails[h, w] = self.trails_map[h, w] * \
-                    (1 - self.DISSIPATION) + blur_value * self.DISSIPATION
+                # # lerp between current value and blurred value
+                # self.new_trails[h, w] = self.trails_map[h, w] * \
+                #     (1 - self.DISSIPATION) + blur_value * self.DISSIPATION
 
                 self.new_trails[h, w]=max(0, blur_value - self.dissipation_rate)
 
