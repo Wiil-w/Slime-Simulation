@@ -8,29 +8,38 @@ class Simulation:
     delay: int = 1
     render_speed: int = 1
     speed: int = 1
-    zoom: int = 1
 
     screen_size: int = 3
+    zoom: int = 4 - 2**(screen_size-1)
     map_width: int = 320 * 2**(screen_size-1)
     map_height: int = 180 * 2**(screen_size-1)
-    circle_size: float = 0.6
+    circle_size: float = 0.7
 
-    agents_num: int = 6000
+    agents_num: int = 20000
     agent_fov: float = np.pi / 8
     agent_turn: float = agent_fov / 2
-    vision_distance: int = speed * 3
+    agent_deviation: float = .25
+    vision_distance: int = speed * 8
+    vision_size: int = 3
 
     trail_strength: float = .8
     blur_size: int = 3
-    dissipation_rate: float = .15
-    decay_rate: float = .5
+    dissipation_rate: float = .05
+    decay_rate: float = .8
 
     def __init__(self) -> None:
         self.tick = 0
         self.trails_map = np.zeros((self.map_height, self.map_width))
-        self.mat_h = np.full((self.agents_num, 9), (np.arange(9) // 3) - 1)
-        self.mat_w = np.full((self.agents_num, 9), (np.arange(9) % 3) - 1)
         self.create_agents()
+
+        vision_area = self.vision_size**2
+        offset = self.vision_size//2
+
+        self.mat_h = np.full((self.agents_num, vision_area), 
+                             (np.arange(vision_area) // self.vision_size) - offset)
+
+        self.mat_w = np.full((self.agents_num, vision_area),
+                             (np.arange(vision_area) % self.vision_size) - offset)
 
     def update(self) -> None:
         """runs the simulation"""
@@ -41,11 +50,13 @@ class Simulation:
             if not (self.tick % self.render_speed):
                 trails = (self.trails_map /
                           self.trail_strength).astype(np.uint8)
+                          
                 if self.zoom > 1:
                     trails = cv.resize(trails,
                                        (self.map_width * self.zoom,
                                         self.map_height * self.zoom),
                                        interpolation=cv.INTER_NEAREST)
+
                 cv.imshow("Simulation", trails)
 
             k = cv.waitKey(self.delay)
@@ -66,7 +77,7 @@ class Simulation:
         t = radius * np.sqrt(np.random.uniform(0, 1, size=self.agents_num))
         u = np.random.uniform(0, 1, size=self.agents_num) * 2 * np.pi
 
-        self.agents_rad = -u
+        self.agents_rad = -u  # - np.pi/2
         self.agents_pos = np.column_stack(
             [
                 t * np.cos(u) + self.map_height / 2,
@@ -106,25 +117,28 @@ class Simulation:
         scent_right = self.calc_rotation(self.agents_rad - self.agent_fov)
         scent_left = self.calc_rotation(self.agents_rad + self.agent_fov)
 
-        cond = (scent_straight < scent_right) + \
-            (scent_straight < scent_left) * 2
+        direction = (scent_straight <= scent_right) + \
+            (scent_straight <= scent_left) * 2
 
-        turn_strength = np.random.rand(self.agents_num) * self.agent_turn
+        turn_strength = (np.random.rand(self.agents_num) *
+                         (2*self.agent_deviation) + (1-self.agent_deviation)) * self.agent_turn
 
-        # don't turn if the scent is stronger straight ahead
-        turn_strength[cond == 0] = 0
+        # # don't turn if the scent is stronger straight ahead
+        # self.agents_rad[direction == 0] += 0
 
         # turn right if scent is stronger to the right
-        turn_strength[cond == 1] *= -1
+        right = direction == 1
+        self.agents_rad[right] -= turn_strength[right]
 
         # turn left if scent is stronger to the left
-        # turn_strength[cond == 2] *= 1
+        left = direction == 2
+        self.agents_rad[left] += turn_strength[left]
 
-        # turn randomly if scent is strong in both drections
-        equal = cond == 3
-        turn_strength[equal] += 2 * turn_strength[equal] - self.agent_turn
-
-        self.agents_rad += turn_strength
+        # turn randomly if scent is stronger in both drections than in front
+        equal = direction == 3
+        self.agents_rad[equal] += (np.random.randint(-2,
+                                   3, equal.sum())) * self.agent_turn
+        # self.agents_rad[equal] += turn_strength[equal] * (np.random.randint(2, equal.sum())*2-1)
 
     def calc_rotation(self, rad: npt.NDArray[np.floating]) -> npt.NDArray[np.floating]:
 
