@@ -19,9 +19,10 @@ class Simulation:
     agent_turn: float = agent_fov / 2
     vision_distance: int = speed * 3
 
-    trail_strength: float = .8
+    trail_strength: float = 2
     blur_strenth: int = 3
-    dissipation_rate: float = .06
+    dissipation_rate: float = .15
+    decay_rate: int = 1
 
     def __init__(self) -> None:
         self.tick = 0
@@ -146,7 +147,7 @@ class Simulation:
             (1 - self.dissipation_rate) * self.trails_map
 
         # decay the trails
-        self.trails_map[self.trails_map >= 1] -= 1
+        self.trails_map[self.trails_map >= 1] -= self.decay_rate
 
 
 if "__main__" == __name__:
