@@ -9,21 +9,20 @@ class Simulation:
     render_speed: int = 1
     speed: int = 1
     map_size: int = 500
-    agents_num: int = 100
+    agents_num: int = 50
     circle_size: float = 0.4
-    trail_strength: float = 15
+    trail_strength: float = 1
     agent_fov: float = np.pi / 12
     vision_distance: int = speed * 2
 
     # How heavy the blur is on the map
     # Which is used to spread out trails
-    blur_strenth: int = 5
-    blur_delay: int = 3
-    dissipation_rate: float = 10
+    blur_strenth: int = 3
+    dissipation_rate: float = .95
 
     def __init__(self) -> None:
         self.tick = 0
-        self.trails_map = np.zeros((self.map_size, self.map_size))
+        self.trails_map = np.zeros((self.map_size, self.map_size), dtype=np.uint8)
         self.create_agents()
 
     def update(self) -> None:
@@ -86,6 +85,14 @@ class Simulation:
 
     def rotate(self) -> None:
 
+        # rads = np.column_stack(
+        #     [
+        #         self.agents_rad - self.agent_fov,
+        #         self.agents_rad,
+        #         self.agents_rad + self.agent_fov,
+        #     ]
+        # )
+
         trail_sum = self.calc_rotation(self.agents_rad)
         result = self.agents_rad
 
@@ -113,58 +120,30 @@ class Simulation:
         w_v = np.clip(self.agents_pos[:, 1] + self.vision_distance * np.cos(rad),
                       0, self.map_size - 1).astype(int)
 
-        return np.vectorize(self.sum_trails)(h_v, w_v)
-        # return self.trails_map[h_v, w_v]
-
-    def sum_trails(self, h, w):
-        return np.sum(self.trails_map[h-1:h+1, w-1:w+1])
+        return self.trails_map[h_v, w_v]
 
     def lay_trails(self) -> None:
         h, w = self.agents_pos.astype(int).T
-        self.trails_map[h, w] = 255
+        self.trails_map[h, w] = 255 * self.trail_strength
 
     def dissipate_trails(self):
-        self.new_trails = np.zeros((self.map_size, self.map_size))
 
-        for h in range(self.map_size):
-            for w in range(self.map_size):
-                blur_value = self.trails_map[
-                    max(h-1, 0):min(h+1, self.map_size-1),
-                    max(w-1, 0):min(w+1, self.map_size-1)].sum() 
+        # # blur the trails map
+        # blur_map = cv.blur(
+        #     self.trails_map, (self.blur_strenth, self.blur_strenth)
+        # )
 
-                # # lerp between current value and blurred value
-                # self.new_trails[h, w] = self.trails_map[h, w] * \
-                #     (1 - self.DISSIPATION) + blur_value * self.DISSIPATION
-
-                self.new_trails[h, w]=max(0, blur_value - self.dissipation_rate)
-
-        self.trails_map = self.new_trails
-        # self.trails_map = np.vectorize(self.blur_trails)(self.trails_map) * .97
-
-        # for h in range(self.map_size):
-        #     for w in range(self.map_size):
-        #         self.trails_map[h, w] = max(0, self.trails_map[h, w] - self.DISSIPATION)
-
-        # if self.tick % self.blur_delay:
-        #     self.trails_map = cv.boxFilter(
-        #         self.trails_map,-1, (self.blur_strenth, self.blur_strenth)
-        #     )
-
-        # self.trails_map *= .97
-
-    def blur_trails(self, h, w):
-        trail_sum = 0
-        for i in range(-1, 2):
-            x = w + i
-            for j in range(-1, 2):
-                y = h + j
-                if 0 <= x < self.map_size and 0 <= y < self.map_size:
-                    trail_sum += self.trails_map[y, x]
-
-        return trail_sum/9
+        # # linear interpolation between the blurred map and the original map
+        # self.trails_map = self.dissipation_rate * self.trails_map + (
+        #     1 - self.dissipation_rate
+        # ) * blur_map
+        
+        # decay the trails
+        self.trails_map[self.trails_map != 0] -= 1
+        # self.trails_map *= self.dissipation_rate
 
     def draw_map(self) -> None:
-        self.frame = np.zeros((self.map_size, self.map_size)) + self.trails_map
+        self.frame = np.zeros((self.map_size, self.map_size), dtype=np.uint8) + self.trails_map
 
 
 if "__main__" == __name__:
