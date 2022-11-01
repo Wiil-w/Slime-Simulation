@@ -2,6 +2,7 @@ import os
 import numpy as np
 import numpy.typing as npt
 import cv2 as cv
+from PIL import Image as img
 
 
 class Simulation:
@@ -49,34 +50,56 @@ class Simulation:
     def update(self) -> None:
         """runs the simulation"""
 
-        trails = np.full(
+        mode = 0
+
+        self.render_map = np.full(
             (self.map_height, self.map_width, 3), [0, 0, 0], dtype=np.uint8
         )
 
         while True:
             self.tick += 1
             self.update_simulation()
-
             if not (self.tick % self.render_speed):
-                trails[:, :, 0] = (self.trails_map / self.trail_strength).astype(
-                    np.uint8
-                )
-                trails[:, :, 1] = trails[:, :, 0] // 2
-                if self.zoom > 1:
-                    cv.imshow(
-                        "Simulation",
-                        cv.resize(
-                            trails,
-                            (self.map_width * self.zoom, self.map_height * self.zoom),
-                            interpolation=cv.INTER_NEAREST,
-                        ),
-                    )
-                else:
-                    cv.imshow("Simulation", trails)
+                self.render(0)
 
             k = cv.waitKey(self.delay)
             if k == 113:
                 break
+
+        if mode == 1:
+            # generate gif from rendered images
+            pass 
+
+    def render(self, mode: int) -> None:
+        self.render_map[:, :, 0] = (self.trails_map / self.trail_strength).astype(
+            np.uint8
+        )
+        self.render_map[:, :, 1] = self.render_map[:, :, 0] // 2
+        
+        if self.zoom > 1:
+            cv.imshow(
+                "Simulation",
+                cv.resize(
+                    self.render_map,
+                    (self.map_width * self.zoom, self.map_height * self.zoom),
+                    interpolation=cv.INTER_NEAREST,
+                ),
+            )
+        else:
+            render = self.render_map
+            
+        match mode:
+            case 0:  # realtime
+                cv.imshow("Simulation", render)
+
+            case 1:  # into images
+                im = img.fromarray(render)
+                if im.mode != "RGB":
+                    im = im.convert("RGB")
+                im.save(f"results/{self.tick//self.render_speed}.png")
+
+
+    def render_gif(self) -> None:
 
     def update_simulation(self) -> None:
         self.lay_trails()
